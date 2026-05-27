@@ -9,6 +9,7 @@ use App\Models\SituationLigne;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 
 class SituationController extends Controller
 {
@@ -108,10 +109,27 @@ class SituationController extends Controller
     public function pdf(Situation $situation)
     {
         $situation->load(['proprietaire', 'lignes', 'generePar']);
-        $agency = app('current_agency');
+        $agency     = app('current_agency');
+        $logoBase64 = $this->agencyLogoBase64($agency);
 
-        $pdf = Pdf::loadView('pdf.situation', compact('situation', 'agency'));
+        $pdf = Pdf::loadView('pdf.situation', compact('situation', 'agency', 'logoBase64'));
 
         return $pdf->download('situation-' . $situation->id . '.pdf');
+    }
+
+    private function agencyLogoBase64($agency): ?string
+    {
+        if (!$agency?->logo) {
+            return null;
+        }
+
+        if (!Storage::disk('public')->exists($agency->logo)) {
+            return null;
+        }
+
+        $content = Storage::disk('public')->get($agency->logo);
+        $mime    = Storage::disk('public')->mimeType($agency->logo);
+
+        return 'data:' . $mime . ';base64,' . base64_encode($content);
     }
 }

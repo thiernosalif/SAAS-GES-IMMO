@@ -8,7 +8,7 @@
     </div>
 
     <x-card>
-        <form action="{{ route('superadmin.agencies.update', $agency) }}" method="POST" class="space-y-5">
+        <form action="{{ route('superadmin.agencies.update', $agency) }}" method="POST" enctype="multipart/form-data" class="space-y-5">
             @csrf @method('PUT')
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -56,6 +56,22 @@
                 <x-form.input label="Couleur principale" name="couleur_principale" type="color"
                     :value="old('couleur_principale', $agency->couleur_principale ?? '#1e3a5f')"
                     :error="$errors->first('couleur_principale')" />
+
+                {{-- Logo --}}
+                <div class="sm:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Logo de l'agence</label>
+                    @if($agency->logo)
+                        <div class="mb-2 flex items-center gap-3">
+                            <img src="{{ Storage::url($agency->logo) }}" alt="Logo actuel"
+                                class="h-16 w-auto rounded border border-gray-200 object-contain bg-white p-1">
+                            <span class="text-xs text-gray-500">Logo actuel — remplacer en sélectionnant un nouveau fichier</span>
+                        </div>
+                    @endif
+                    <input type="file" name="logo" accept="image/jpeg,image/png,image/webp"
+                        class="block w-full text-sm text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100">
+                    <p class="mt-1 text-xs text-gray-400">PNG, JPG ou WebP — max 2 Mo. Affiché sur les PDF (reçus, situations).</p>
+                    @error('logo') <p class="mt-1 text-xs text-red-600">{{ $message }}</p> @enderror
+                </div>
             </div>
 
             <div class="flex items-center gap-3">

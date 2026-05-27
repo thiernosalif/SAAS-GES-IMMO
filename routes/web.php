@@ -13,6 +13,7 @@ use App\Http\Controllers\ComptabiliteController;
 use App\Http\Controllers\ReclamationController;
 use App\Http\Controllers\ParametresController;
 use App\Http\Controllers\RapportController;
+use App\Http\Controllers\UserController;
 use App\Http\Controllers\SuperAdmin\AgencyController;
 use App\Http\Controllers\SuperAdmin\SuperDashboardController;
 use App\Http\Controllers\SuperAdmin\UserController as SuperUserController;
@@ -54,6 +55,8 @@ Route::middleware(['auth', 'set_tenant', 'agency_active'])->group(function () {
     Route::middleware('role:agency_admin')->group(function () {
         Route::get('parametres', [ParametresController::class, 'edit'])->name('parametres.edit');
         Route::put('parametres', [ParametresController::class, 'update'])->name('parametres.update');
+
+        Route::resource('users', UserController::class)->except(['show']);
     });
 
     Route::middleware('auth')->group(function () {

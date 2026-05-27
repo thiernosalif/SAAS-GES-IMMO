@@ -8,6 +8,7 @@ use App\Models\Contrat;
 use App\Models\Paiement;
 use App\Models\Zone;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class AgencyController extends Controller
@@ -45,11 +46,16 @@ class AgencyController extends Controller
             'is_active'          => 'boolean',
             'expires_at'         => 'nullable|date',
             'couleur_principale' => 'nullable|string|max:7',
+            'logo'               => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
         ]);
 
         $data['slug']            = Str::slug($data['name'] . '-' . now()->timestamp);
         $data['is_active']       = $request->boolean('is_active', true);
         $data['taux_commission'] = $data['taux_commission'] ?? 10;
+
+        if ($request->hasFile('logo')) {
+            $data['logo'] = $request->file('logo')->store('logos', 'public');
+        }
 
         $agency = Agency::create($data);
 
@@ -103,9 +109,19 @@ class AgencyController extends Controller
             'is_active'          => 'boolean',
             'expires_at'         => 'nullable|date',
             'couleur_principale' => 'nullable|string|max:7',
+            'logo'               => 'nullable|image|mimes:jpeg,jpg,png,webp|max:2048',
         ]);
 
         $data['is_active'] = $request->boolean('is_active');
+
+        if ($request->hasFile('logo')) {
+            // Supprimer l'ancien logo
+            if ($agency->logo) {
+                Storage::disk('public')->delete($agency->logo);
+            }
+            $data['logo'] = $request->file('logo')->store('logos', 'public');
+        }
+
         $agency->update($data);
 
         return redirect()->route('superadmin.agencies.show', $agency)

@@ -9,6 +9,11 @@ class DashboardController extends Controller
 {
     public function index()
     {
+        // Super admin has no agency — send them to their own dashboard
+        if (auth()->user()?->isSuperAdmin()) {
+            return redirect()->route('superadmin.dashboard');
+        }
+
         $agency     = app('current_agency');
         $debutMois  = now()->startOfMonth();
         $finMois    = now()->endOfMonth();

@@ -10,6 +10,11 @@ class CheckAgencyActive
 {
     public function handle(Request $request, Closure $next): Response
     {
+        // Super admin bypasses SetTenantMiddleware — current_agency is never bound
+        if (!app()->bound('current_agency')) {
+            return $next($request);
+        }
+
         $agency = app('current_agency');
 
         if ($agency && !$agency->is_active) {

@@ -17,7 +17,8 @@
     ];
 
     if (auth()->user()?->isAgencyAdmin()) {
-        $nav[] = ['route' => 'parametres.edit', 'label' => 'Paramètres', 'icon' => 'cog'];
+        $nav[] = ['route' => 'users.index',    'label' => 'Utilisateurs', 'icon' => 'user-plus'];
+        $nav[] = ['route' => 'parametres.edit', 'label' => 'Paramètres',  'icon' => 'cog'];
     }
 @endphp
 

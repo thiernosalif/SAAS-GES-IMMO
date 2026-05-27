@@ -10,6 +10,11 @@ class AgencyScope implements Scope
 {
     public function apply(Builder $builder, Model $model): void
     {
+        // Not bound = super admin or CLI context — no tenant filter
+        if (!app()->bound('current_agency')) {
+            return;
+        }
+
         $agency = app('current_agency');
 
         if ($agency) {

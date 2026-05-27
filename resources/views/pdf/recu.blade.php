@@ -2,6 +2,10 @@
 
     <div class="header">
         <div class="header-agency">
+            @if(!empty($logoBase64))
+                <img src="{{ $logoBase64 }}" alt="{{ $agency->name }}"
+                     style="max-height:64px; max-width:180px; margin-bottom:8px; display:block; object-fit:contain;">
+            @endif
             <div class="agency-name">{{ $agency->name }}</div>
             <div class="agency-info">
                 {{ $agency->adresse }}<br>
