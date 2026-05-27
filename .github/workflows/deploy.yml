@@ -1,0 +1,73 @@
+name: 🚀 Deploy — SGI Immo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:        # Déclenchement manuel depuis GitHub si besoin
+
+jobs:
+  deploy:
+    name: Build & Deploy → O2switch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+
+      # ── 1. Récupérer le code ────────────────────────────────────────────────
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      # ── 2. Build des assets Tailwind/Vite ──────────────────────────────────
+      # public/build/ est dans .gitignore : on build en CI puis on l'envoie.
+      - name: 🟢 Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 npm install & build
+        run: |
+          npm ci
+          npm run build
+
+      # ── 3. Git pull + Composer sur le serveur ──────────────────────────────
+      - name: 📡 Pull code & install dependencies
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd ${{ secrets.APP_PATH }}
+            git pull origin main
+            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      # ── 4. Upload des assets compilés (non versionnés) ─────────────────────
+      - name: 🎨 Upload public/build/
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "public/build"
+          target: "${{ secrets.APP_PATH }}/public/"
+
+      # ── 5. Migrations + cache + lien storage ───────────────────────────────
+      - name: 🗄️  Migrate & optimize
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -e
+            cd ${{ secrets.APP_PATH }}
+            php artisan migrate --force
+            php artisan optimize:clear
+            php artisan optimize
+            php artisan storage:link 2>/dev/null || true
+            echo "✅ Deployed at $(date '+%Y-%m-%d %H:%M:%S')"
