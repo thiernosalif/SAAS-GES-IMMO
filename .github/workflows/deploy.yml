@@ -7,7 +7,7 @@ on:
 
 jobs:
   deploy:
-    name: Build & Deploy → O2switch
+    name: Build & Deploy → O2switch (FTP)
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -17,7 +17,7 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      # ── 2. PHP 8.3 + Composer (vendor buildé en CI, pas sur le serveur) ────
+      # ── 2. PHP 8.3 + Composer ──────────────────────────────────────────────
       - name: 🐘 Setup PHP 8.3
         uses: shivammathur/setup-php@v2
         with:
@@ -40,55 +40,36 @@ jobs:
           npm ci
           npm run build
 
-      # ── 4. Git pull sur le serveur ─────────────────────────────────────────
-      - name: 📡 Git pull
-        uses: appleboy/ssh-action@v1.0.3
+      # ── 4. Déploiement FTP ─────────────────────────────────────────────────
+      # Envoie vendor/ + public/build/ + tout le code (sauf exclusions)
+      - name: 📤 Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            set -e
-            cd ${{ secrets.APP_PATH }}
-            git pull origin main
-            echo "✅ Code updated"
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 21
+          protocol: ftp
+          local-dir: ./
+          server-dir: sgi-immo/
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            **/tests/**
+            **/.env
+            **/.env.*
+            **/storage/logs/**
+            **/storage/framework/cache/**
+            **/storage/framework/sessions/**
+            **/storage/framework/views/**
+            **/.github/**
+            **/Makefile
 
-      # ── 5. Upload vendor/ (buildé avec PHP 8.3 en CI) ──────────────────────
-      - name: 📤 Upload vendor/
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "vendor"
-          target: "${{ secrets.APP_PATH }}/"
-
-      # ── 6. Upload public/build/ (assets compilés) ──────────────────────────
-      - name: 📤 Upload public/build/
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          source: "public/build"
-          target: "${{ secrets.APP_PATH }}/public/"
-
-      # ── 7. Migrations + cache + storage ────────────────────────────────────
-      - name: 🗄️  Migrate & optimize
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            set -e
-            cd ${{ secrets.APP_PATH }}
-            php artisan migrate --force
-            php artisan optimize:clear
-            php artisan optimize
-            php artisan storage:link 2>/dev/null || true
-            echo "✅ Deployed at $(date '+%Y-%m-%d %H:%M:%S')"
+      # ── 5. Webhook → artisan migrate + optimize ────────────────────────────
+      - name: 🗄️  Trigger deploy hook (migrations + optimize)
+        run: |
+          curl -f -s -o /dev/null -w "%{http_code}" \
+            -H "X-Deploy-Token: ${{ secrets.DEPLOY_SECRET }}" \
+            "${{ secrets.APP_URL }}/deploy.php" \
+          | grep -q "200" && echo "✅ Hook OK" || echo "⚠️ Hook failed (check manually)"
