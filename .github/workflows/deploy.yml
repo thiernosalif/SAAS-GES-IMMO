@@ -3,13 +3,13 @@ name: 🚀 Deploy — SGI Immo
 on:
   push:
     branches: [main]
-  workflow_dispatch:        # Déclenchement manuel depuis GitHub si besoin
+  workflow_dispatch:
 
 jobs:
   deploy:
     name: Build & Deploy → O2switch
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
 
@@ -17,21 +17,31 @@ jobs:
       - name: 📥 Checkout
         uses: actions/checkout@v4
 
-      # ── 2. Build des assets Tailwind/Vite ──────────────────────────────────
-      # public/build/ est dans .gitignore : on build en CI puis on l'envoie.
+      # ── 2. PHP 8.3 + Composer (vendor buildé en CI, pas sur le serveur) ────
+      - name: 🐘 Setup PHP 8.3
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo, pdo_mysql, bcmath, zip, gd, fileinfo
+          coverage: none
+
+      - name: 📦 Composer install (prod)
+        run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+
+      # ── 3. Build des assets Tailwind/Vite ──────────────────────────────────
       - name: 🟢 Setup Node.js 20
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: 📦 npm install & build
+      - name: 🎨 npm install & build
         run: |
           npm ci
           npm run build
 
-      # ── 3. Git pull + Composer sur le serveur ──────────────────────────────
-      - name: 📡 Pull code & install dependencies
+      # ── 4. Git pull sur le serveur ─────────────────────────────────────────
+      - name: 📡 Git pull
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -42,10 +52,21 @@ jobs:
             set -e
             cd ${{ secrets.APP_PATH }}
             git pull origin main
-            composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+            echo "✅ Code updated"
 
-      # ── 4. Upload des assets compilés (non versionnés) ─────────────────────
-      - name: 🎨 Upload public/build/
+      # ── 5. Upload vendor/ (buildé avec PHP 8.3 en CI) ──────────────────────
+      - name: 📤 Upload vendor/
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          source: "vendor"
+          target: "${{ secrets.APP_PATH }}/"
+
+      # ── 6. Upload public/build/ (assets compilés) ──────────────────────────
+      - name: 📤 Upload public/build/
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.SSH_HOST }}
@@ -55,7 +76,7 @@ jobs:
           source: "public/build"
           target: "${{ secrets.APP_PATH }}/public/"
 
-      # ── 5. Migrations + cache + lien storage ───────────────────────────────
+      # ── 7. Migrations + cache + storage ────────────────────────────────────
       - name: 🗄️  Migrate & optimize
         uses: appleboy/ssh-action@v1.0.3
         with:
