@@ -107,12 +107,19 @@ jobs:
 
       # ── 6. Webhook → dézipper vendor + migrate + optimize ──────────────────
       - name: 🗄️  Trigger deploy hook
-        if: ${{ secrets.APP_URL != '' }}
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          DEPLOY_SECRET: ${{ secrets.DEPLOY_SECRET }}
+          VENDOR_UPDATED: ${{ steps.vendor_check.outputs.changed }}
         run: |
+          if [ -z "$APP_URL" ]; then
+            echo "⏭️  APP_URL non défini — hook ignoré (configurez le secret APP_URL)"
+            exit 0
+          fi
           RESPONSE=$(curl -s -w "\n%{http_code}" \
-            -H "X-Deploy-Token: ${{ secrets.DEPLOY_SECRET }}" \
-            -H "X-Vendor-Updated: ${{ steps.vendor_check.outputs.changed }}" \
-            "${{ secrets.APP_URL }}/deploy.php")
+            -H "X-Deploy-Token: $DEPLOY_SECRET" \
+            -H "X-Vendor-Updated: $VENDOR_UPDATED" \
+            "$APP_URL/deploy.php")
           HTTP_CODE=$(echo "$RESPONSE" | tail -1)
           BODY=$(echo "$RESPONSE" | head -1)
           echo "HTTP: $HTTP_CODE"
