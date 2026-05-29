@@ -4,20 +4,28 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      force_vendor:
+        description: 'Forcer re-upload vendor.zip'
+        required: false
+        default: 'false'
+        type: boolean
 
 jobs:
   deploy:
     name: Build & Deploy → O2switch (FTP)
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
 
-      # ── 1. Récupérer le code ────────────────────────────────────────────────
+      # ── 1. Checkout ─────────────────────────────────────────────────────────
       - name: 📥 Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 2          # needed for git diff below
 
-      # ── 2. PHP 8.3 + Composer ──────────────────────────────────────────────
+      # ── 2. PHP 8.3 + Composer ───────────────────────────────────────────────
       - name: 🐘 Setup PHP 8.3
         uses: shivammathur/setup-php@v2
         with:
@@ -28,7 +36,7 @@ jobs:
       - name: 📦 Composer install (prod)
         run: composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
 
-      # ── 3. Build des assets Tailwind/Vite ──────────────────────────────────
+      # ── 3. Build assets ─────────────────────────────────────────────────────
       - name: 🟢 Setup Node.js 20
         uses: actions/setup-node@v4
         with:
@@ -40,9 +48,39 @@ jobs:
           npm ci
           npm run build
 
-      # ── 4. Déploiement FTP ─────────────────────────────────────────────────
-      # Envoie vendor/ + public/build/ + tout le code (sauf exclusions)
-      - name: 📤 Deploy via FTP
+      # ── 4. Créer vendor.zip si composer.lock a changé ──────────────────────
+      - name: 🔍 Vérifier si vendor doit être mis à jour
+        id: vendor_check
+        run: |
+          if git diff HEAD~1 HEAD --name-only 2>/dev/null | grep -q composer.lock; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "→ composer.lock modifié : vendor.zip sera uploadé"
+          elif [ "${{ inputs.force_vendor }}" = "true" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "→ Force vendor upload demandé"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "→ composer.lock inchangé : vendor.zip ignoré"
+          fi
+
+      - name: 🗜️  Créer vendor.zip
+        if: steps.vendor_check.outputs.changed == 'true'
+        run: |
+          echo "Compression de vendor/ ..."
+          zip -r vendor.zip vendor/ -q
+          ls -lh vendor.zip
+
+      - name: 📤 Upload vendor.zip via FTP
+        if: steps.vendor_check.outputs.changed == 'true'
+        run: |
+          curl -s -T vendor.zip \
+            "ftp://${{ secrets.FTP_HOST }}/sgi-immo/vendor.zip" \
+            --user "${{ secrets.FTP_USERNAME }}:${{ secrets.FTP_PASSWORD }}" \
+            --ftp-create-dirs
+          echo "✅ vendor.zip uploadé"
+
+      # ── 5. Déployer le code source (sans vendor/) via FTP ──────────────────
+      - name: 📤 Deploy code source via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
           server: ${{ secrets.FTP_HOST }}
@@ -56,6 +94,8 @@ jobs:
             **/.git*
             **/.git*/**
             **/node_modules/**
+            **/vendor/**
+            **/vendor.zip
             **/tests/**
             **/.env
             **/.env.*
@@ -64,12 +104,17 @@ jobs:
             **/storage/framework/sessions/**
             **/storage/framework/views/**
             **/.github/**
-            **/Makefile
 
-      # ── 5. Webhook → artisan migrate + optimize ────────────────────────────
-      - name: 🗄️  Trigger deploy hook (migrations + optimize)
+      # ── 6. Webhook → dézipper vendor + migrate + optimize ──────────────────
+      - name: 🗄️  Trigger deploy hook
+        if: ${{ secrets.APP_URL != '' }}
         run: |
-          curl -f -s -o /dev/null -w "%{http_code}" \
+          RESPONSE=$(curl -s -w "\n%{http_code}" \
             -H "X-Deploy-Token: ${{ secrets.DEPLOY_SECRET }}" \
-            "${{ secrets.APP_URL }}/deploy.php" \
-          | grep -q "200" && echo "✅ Hook OK" || echo "⚠️ Hook failed (check manually)"
+            -H "X-Vendor-Updated: ${{ steps.vendor_check.outputs.changed }}" \
+            "${{ secrets.APP_URL }}/deploy.php")
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+          echo "HTTP: $HTTP_CODE"
+          echo "Response: $BODY"
+          [ "$HTTP_CODE" = "200" ] && echo "✅ Deploy hook OK" || echo "⚠️ Hook failed — run migrations manually"

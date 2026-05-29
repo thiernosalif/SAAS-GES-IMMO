@@ -17,6 +17,20 @@ $base = dirname(__DIR__);
 $php  = PHP_BINARY;
 $log  = [];
 
+// ── Dézipper vendor.zip si présent (envoyé par GitHub Actions) ────────────
+$vendorZip = "{$base}/vendor.zip";
+if (($_SERVER['HTTP_X_VENDOR_UPDATED'] ?? 'false') === 'true' && file_exists($vendorZip)) {
+    $zip = new ZipArchive();
+    if ($zip->open($vendorZip) === true) {
+        $zip->extractTo($base);
+        $zip->close();
+        unlink($vendorZip);
+        $log[] = ['step' => 'vendor_extract', 'status' => 'ok', 'msg' => 'vendor.zip extrait et supprimé'];
+    } else {
+        $log[] = ['step' => 'vendor_extract', 'status' => 'error', 'msg' => 'Impossible d\'ouvrir vendor.zip'];
+    }
+}
+
 $commands = [
     "{$php} {$base}/artisan migrate --force --no-interaction",
     "{$php} {$base}/artisan optimize:clear",
